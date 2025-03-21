@@ -2255,6 +2255,8 @@ elem* toElem(Expression e, ref IRState irs)
         // Look for array[]=n
         if (auto are = ae.e1.isSliceExp())
         {
+            printf("%d: %s\n", __LINE__, ae.toChars());
+
             Type t1 = t1b;
             Type ta = are.e1.type.toBasetype();
 
@@ -2277,6 +2279,10 @@ elem* toElem(Expression e, ref IRState irs)
                 // Look for array[]=n
                 if (auto ts = ta.isTypeSArray())
                 {
+                    if (ae.op == EXP.construct) {
+                        auto constr_exp = ae.isConstructExp();
+                        return setResult(toElem(constr_exp.lowering, irs));
+                    }
                     n1 = array_toPtr(ta, n1);
                     enbytes = toElem(ts.dim, irs);
                     n1x = n1;
@@ -2587,6 +2593,8 @@ elem* toElem(Expression e, ref IRState irs)
         //if (ae.op == EXP.construct) printf("construct\n");
         if (auto t1s = t1b.isTypeStruct())
         {
+            printf("%d: %s\n", __LINE__, ae.toChars());
+
             if (ae.e2.op == EXP.int64)
             {
                 assert(ae.op == EXP.blit);
@@ -2765,7 +2773,9 @@ elem* toElem(Expression e, ref IRState irs)
             }
             else if (ae.op == EXP.construct)
             {
-                assert(0, "Trying reference _d_arrayctor, this should not happen!");
+                auto constructExp = ae.isConstructExp();
+                return setResult2(toElem(constructExp.lowering, irs));
+                // assert(0, "Trying reference _d_arrayctor, this should not happen!");
             }
             else
             {
@@ -6337,9 +6347,16 @@ Lagain:
             {
                 if (needsPostblit(tb) || needsDtor(tb))
                 {
-                    if (op == EXP.construct)
-                        assert(0, "Trying to reference _d_arraysetctor, this should not happen!");
-                    else
+                    // if (op == EXP.construct) {
+                    //     auto constructExp = exp.isConstructExp();
+                    //     printf("%s\n", exp.toChars());
+                    //     printf("%d, %d\n", exp.op, EXP.construct);
+                    //     printf("%p\n", constructExp);
+                    //     return toElem(constructExp.lowering, irs);
+                    //     // assert(0, "Trying to reference _d_arraysetctor, this should not happen!");
+                    // }
+                    // else
+                    if (op != EXP.construct)
                         assert(0, "Trying to reference _d_arraysetassign, this should not happen!");
                 }
             }

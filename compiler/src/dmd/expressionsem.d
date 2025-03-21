@@ -11635,7 +11635,9 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                 {
                     arguments.push(new CastExp(ae.loc, rhs, t2b.nextOf.arrayOf).expressionSemantic(sc));
                     Expression ce = new CallExp(exp.loc, id, arguments);
-                    res = ce.expressionSemantic(sc);
+                    auto constructExp = exp.isConstructExp();
+                    constructExp.lowering = ce.expressionSemantic(sc);
+                    res = constructExp;
                 }
                 else
                 {
@@ -11651,7 +11653,10 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                         arguments.push(ae.e2);
 
                     Expression ce = new CallExp(exp.loc, id, arguments);
-                    res = Expression.combine(e0, ce).expressionSemantic(sc);
+                    auto constructExp = exp.isConstructExp();
+                    constructExp.lowering = Expression.combine(e0, ce).expressionSemantic(sc);
+                    res = constructExp;
+                    printf("%s\n", constructExp.lowering.toChars());
                 }
 
                 if (global.params.v.verbose)
