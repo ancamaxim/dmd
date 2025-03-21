@@ -48,6 +48,15 @@ struct Loc
 
 nothrow:
 
+    /// Reset global (Base)Loc tables, invalidating every existing `Loc` out there
+    /// and giving room to create new `Loc`s
+    static void _init()
+    {
+        locIndex = 1;
+        locFileTable = null;
+        lastFileTableIndex = 0;
+    }
+
     /*******************************
      * Configure how display is done
      * Params:
@@ -124,6 +133,12 @@ nothrow:
         return this.index - locFileTable[i].startIndex;
     }
 
+    /// Returns: this location as a SourceLoc
+    extern (C++) SourceLoc toSourceLoc() const @nogc @safe
+    {
+        return SourceLoc(this);
+    }
+
     /**
      * Checks for equivalence by comparing the filename contents (not the pointer) and character location.
      *
@@ -131,7 +146,7 @@ nothrow:
      *  - Uses case-insensitive comparison on Windows
      *  - Ignores `charnum` if `Columns` is false.
      */
-    extern (C++) bool equals(ref const(Loc) loc) const
+    extern (C++) bool equals(Loc loc) const
     {
         SourceLoc lhs = SourceLoc(this);
         SourceLoc rhs = SourceLoc(loc);
@@ -272,9 +287,7 @@ private size_t fileTableIndex(uint index) nothrow @nogc
     // To speed up linear find, we cache the last hit and compare that first,
     // since usually we stay in the same file for some time when resolving source locations.
     // If it's a different file now, either scan forwards / backwards
-    __gshared size_t lastI = 0; // index of last found hit
-
-    size_t i = lastI;
+    size_t i = lastFileTableIndex;
     if (index >= locFileTable[i].startIndex)
     {
         while (i + 1 < locFileTable.length && index >= locFileTable[i+1].startIndex)
@@ -286,7 +299,7 @@ private size_t fileTableIndex(uint index) nothrow @nogc
             i--;
     }
 
-    lastI = i;
+    lastFileTableIndex = i;
     return i;
 }
 
@@ -459,3 +472,6 @@ private __gshared uint locIndex = 1;
 
 // Global mapping of Loc indices to source file offset/line/column, see `BaseLoc`
 private __gshared BaseLoc*[] locFileTable;
+
+// Index of last found hit in locFileTable, for optimization
+private __gshared size_t lastFileTableIndex = 0;

@@ -55,8 +55,8 @@ nothrow:
 @trusted
 void cdeq(ref CGstate cg, ref CodeBuilder cdb,elem* e,ref regm_t pretregs)
 {
-    printf("cdeq(e = %p, pretregs = %s)\n",e,regm_str(pretregs));
-    elem_print(e);
+    //printf("cdeq(e = %p, pretregs = %s)\n",e,regm_str(pretregs));
+    //elem_print(e);
 
     reg_t reg;
     code cs;
@@ -362,7 +362,7 @@ void cdaddass(ref CGstate cg, ref CodeBuilder cdb,elem* e,ref regm_t pretregs)
         scodelem(cgstate,cdb,e.E2,retregs,0,true);   // get rvalue
         getlvalue(cdb,cs,e1,retregs);                // get lvalue
         reg_t reg1;
-        if (cs.reg)
+        if (cs.reg != NOREG)
             reg1 = cs.reg;
         else
         {
@@ -608,7 +608,7 @@ void cdmulass(ref CGstate cg, ref CodeBuilder cdb,elem* e,ref regm_t pretregs)
     regm_t earegm = mask(cs.base) | mask(cs.index);
     regm_t retregs;
     reg_t reg;
-    if (cs.reg)
+    if (cs.reg != NOREG)
     {
         reg = cs.reg;
         retregs = mask(reg);
@@ -617,7 +617,7 @@ void cdmulass(ref CGstate cg, ref CodeBuilder cdb,elem* e,ref regm_t pretregs)
     {
         retregs = cg.allregs & ~earegm & ~regm2;
         reg = allocreg(cdb,retregs,tyml);
-        loadFromEA(cs,reg,sz,sz == 8 ? 8 : 4);
+        loadFromEA(cs,reg,sz == 8 ? 8 : 4, sz);
         cdb.gen(&cs);
     }
     getregs(cdb,retregs);           // destroy these regs
@@ -759,7 +759,7 @@ void cdshass(ref CGstate cg, ref CodeBuilder cdb,elem* e,ref regm_t pretregs)
     regm_t earegm = mask(cs.base) | mask(cs.index);
     regm_t retregs;
     reg_t Rshiftee;
-    if (cs.reg)
+    if (cs.reg != NOREG)
     {
         Rshiftee = cs.reg;
         retregs = mask(Rshiftee);
@@ -768,7 +768,7 @@ void cdshass(ref CGstate cg, ref CodeBuilder cdb,elem* e,ref regm_t pretregs)
     {
         retregs = cg.allregs & ~earegm & ~Rshiftcntm;
         Rshiftee = allocreg(cdb,retregs,tyml);
-        loadFromEA(cs,Rshiftee,sz,sz == 8 ? 8 : 4);
+        loadFromEA(cs,Rshiftee,sz == 8 ? 8 : 4,sz);
         cdb.gen(&cs);
     }
 
@@ -793,11 +793,12 @@ void cdshass(ref CGstate cg, ref CodeBuilder cdb,elem* e,ref regm_t pretregs)
     uint opcode;
     switch (e.Eoper)
     {
-        case OPshl:     opcode = 0x8;   break;
-        case OPshr:     opcode = 0x9;   break;
-        case OPashr:    opcode = 0xA;   break;
+        case OPshlass:  opcode = 0x8;   break;
+        case OPshrass:  opcode = 0x9;   break;
+        case OPashrass: opcode = 0xA;   break;
         //case OPror:     opcode = 0xB;   break;
         default:
+            elem_print(e);
             assert(0);
     }
 
@@ -1569,7 +1570,7 @@ void cdshtlng(ref CGstate cg, ref CodeBuilder cdb,elem* e,ref regm_t pretregs)
             (e1.Eoper == OPind && !e1.Ecount))
         {
             code cs;
-            getlvalue(cdb,cs,e11,0,RM.load);
+            getlvalue(cdb,cs,e1,0,RM.load);
             retregs = pretregs;
             if (!retregs)
                 retregs = cg.allregs;
@@ -1714,16 +1715,20 @@ void cdbyteint(ref CGstate cg, ref CodeBuilder cdb,elem* e,ref regm_t pretregs)
     }
 
     //printf("cdbyteint(e = %p, pretregs = %s\n", e, regm_str(pretregs));
-    char op = e.Eoper;
+    const op = e.Eoper;
     elem* e1 = e.E1;
     if (e1.Eoper == OPcomma)
         docommas(cdb,e1);
 
+    retregs = pretregs & cg.allregs;
+    if (retregs == 0)
+        retregs = cg.allregs;
+
     if (e1.Eoper == OPvar || (e1.Eoper == OPind && !e1.Ecount))
     {
         code cs;
-        getlvalue(cdb,cs,e,0,RM.load);
-        Extend extend = OPu8_16 ? Extend.UXTB : Extend.SXTB;
+        getlvalue(cdb,cs,e1,0,RM.load);
+        Extend extend = (op == OPu8_16) ? Extend.UXTB : Extend.SXTB;
         cs.Sextend = cast(ubyte)((cs.Sextend & 0x100) | extend);
         reg_t reg = allocreg(cdb,retregs,TYint);
         loadFromEA(cs,reg,4,1);
@@ -1734,9 +1739,6 @@ void cdbyteint(ref CGstate cg, ref CodeBuilder cdb,elem* e,ref regm_t pretregs)
     }
 
     size = tysize(e.Ety);
-    retregs = pretregs & cg.allregs;
-    if (retregs == 0)
-        retregs = cg.allregs;
     retregs |= pretregs & mPSW;
     pretregs &= ~mPSW;
 

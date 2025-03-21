@@ -35,6 +35,7 @@ import dmd.backend.oper;
 import dmd.backend.rtlsym;
 import dmd.backend.ty;
 import dmd.backend.type;
+import dmd.backend.arm.cod2 : tyToExtend;
 import dmd.backend.arm.cod3 : COND, genBranch, conditionCode, gentstreg;
 import dmd.backend.arm.instr;
 import dmd.backend.arm.cod3 : loadFloatRegConst;
@@ -56,7 +57,11 @@ nothrow:
  */
 void loadFromEA(ref code cs, reg_t reg, uint szw, uint szr)
 {
-    if (reg & 32)       // if floating point register
+    //debug printf("loadFromEA() reg: %d, szw: %d, szr: %d\n", reg, szw, szr);
+    assert(szr <= szw);
+    cs.Iop = INSTR.nop;
+    assert(reg != NOREG);
+    if (mask(reg) & INSTR.FLOATREGS)       // if floating point store
     {
         if (cs.reg != NOREG)
         {
@@ -81,6 +86,8 @@ void loadFromEA(ref code cs, reg_t reg, uint szw, uint szr)
         return;
     }
 
+    bool signExtend = (cs.Sextend & 4) != 0; // SXTB, SXTH, SXTW, SXTX
+
     if (cs.reg != NOREG)
     {
         if (cs.reg != reg)  // do not mov onto itself
@@ -101,9 +108,11 @@ void loadFromEA(ref code cs, reg_t reg, uint szw, uint szr)
     {
         // LDRB/LDRH/LDR reg,[cs.base, #0]
         if (szr == 1)
-            cs.Iop = INSTR.ldrb_imm(szw == 8, reg, cs.base, 0);
+            cs.Iop = signExtend ? INSTR.ldrsb_imm(szw == 8, reg, cs.base, 0)
+                                : INSTR.ldrb_imm (szw == 8, reg, cs.base, 0);
         else if (szr == 2)
-            cs.Iop = INSTR.ldrh_imm(szw == 8, reg, cs.base, 0);
+            cs.Iop = signExtend ? INSTR.ldrsh_imm(szw == 8, reg, cs.base, 0)
+                                : INSTR.ldrh_imm (szw == 8, reg, cs.base, 0);
         else
             cs.Iop = INSTR.ldr_imm_gen(szw == 8, reg, cs.base, 0);
     }
@@ -120,7 +129,10 @@ void loadFromEA(ref code cs, reg_t reg, uint szw, uint szr)
  */
 void storeToEA(ref code cs, reg_t reg, uint sz)
 {
-    if (reg & 32)       // if floating point store
+    //debug printf("storeToEA(reg: %d, sz: %d)\n", reg, sz);
+    cs.Iop = INSTR.nop;
+    assert(reg != NOREG);
+    if (mask(reg) & INSTR.FLOATREGS)       // if floating point store
     {
         if (cs.reg != NOREG)
         {
@@ -282,7 +294,7 @@ int isscaledindex(tym_t ty, elem* e)
 @trusted
 void logexp(ref CodeBuilder cdb, elem* e, uint jcond, FL fltarg, code* targ)
 {
-    //printf("logexp(e = %p, jcond = %d)\n", e, jcond); elem_print(e);
+    //printf("logexp(e: %p jcond: %d fltarg: %d targ: %p)\n", e, jcond, fltarg == FL.code, targ); elem_print(e);
     if (tybasic(e.Ety) == TYnoreturn)
     {
         con_t regconsave = cgstate.regcon;
@@ -1071,7 +1083,7 @@ void getlvalue(ref CodeBuilder cdb,ref code pcs,elem* e,regm_t keepmsk,RM rm = R
                  * such variables.
                  */
                 if (tyxmmreg(ty) && !(s.Sregm & XMMREGS) ||
-                    !tyxmmreg(ty) && (s.Sregm & XMMREGS))
+                    !tyxmmreg(ty) && (s.Sregm & XMMREGS))       // TODO AArch64
                     cgreg_unregister(s.Sregm);
 
                 if (
@@ -1094,7 +1106,7 @@ void getlvalue(ref CodeBuilder cdb,ref code pcs,elem* e,regm_t keepmsk,RM rm = R
             }
             pcs.IEV1.Vsym = s;
             pcs.IEV1.Voffset = e.Voffset;
-            //pcs.Sextend = tyToExtend(ty);  only need to worry about this if pcs.index is set
+            pcs.Sextend = cast(ubyte)tyToExtend(ty);  // sign or zero extension
             if (sz == 1)
             {
                 s.Sflags |= GTbyte;
@@ -1424,9 +1436,9 @@ void cdfunc(ref CGstate cg, ref CodeBuilder cdb, elem* e, ref regm_t pretregs)
     /* stack for parameters is allocated all at once - no pushing
      * and ensure it is aligned
      */
-printf("STACKALIGN: %d\n", STACKALIGN);
+//printf("STACKALIGN: %d\n", STACKALIGN);
     uint numalign = -numpara & (STACKALIGN - 1);
-printf("numalign: %d numpara: %d\n", numalign, numpara);
+//printf("numalign: %d numpara: %d\n", numalign, numpara);
     cod3_stackadj(cdb, numalign + numpara);
     cdb.genadjesp(numalign + numpara);
     cgstate.stackpush += numalign + numpara;
@@ -2148,7 +2160,6 @@ void loaddata(ref CodeBuilder cdb, elem* e, ref regm_t outretregs)
                 if (movOnly(e))
                     opmv = 0x8B;
             }
-            assert(forregs & BYTEREGS);
             if (!I16)
             {
                 if (config.target_cpu >= TARGET_PentiumPro && config.flags4 & CFG4speed &&
